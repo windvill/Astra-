@@ -176,6 +176,8 @@ input { accent-color:#87bc9c; }
 @media(prefers-reduced-motion:reduce) { * { transition:none !important; } }
 @media(any-pointer:coarse){#tutorial.tutorial-panel{top:auto;bottom:178px;max-height:calc(100dvh - 320px);overflow:auto;}}
 @media(any-pointer:coarse) and (max-height:500px){#tutorial.tutorial-panel{bottom:12px;width:calc(100% - 300px);max-height:calc(100dvh - 150px);padding:10px;}}
+@media(any-pointer:coarse) and (min-height:501px){#tutorial.tutorial-panel{top:145px;bottom:auto;max-height:calc(50dvh - 165px);}body:not(.title-screen)>.audio-controls{top:auto;bottom:164px;left:20px;}}
+@media(any-pointer:coarse) and (max-height:500px){#tutorial.tutorial-panel{top:135px;bottom:auto;left:12px;transform:none;width:min(280px,40%);max-height:calc(100dvh - 250px);}#tutorial>.brand,#tutorial-progress{display:none;}#tutorial #tutorial-title{font-size:14px;margin-top:0;padding-right:25px;}#tutorial #tutorial-skip{min-height:44px;font-size:12px;margin-top:8px;padding:8px;}#tutorial .guide-toggle{top:6px;right:6px;width:24px;height:24px;}#tutorial p{margin:6px 0;}}
 </style>
 </head>
 <body class="title-screen">

@@ -11,13 +11,15 @@ It can be replayed or skipped, grants no permanent currency, and resets the expe
 before normal play. The title menu also contains three story chapters and expanded
 credits.
 
-Desktop browser build for keyboard and mouse. The title screen, sanctuary upgrades,
+Browser build for keyboard, mouse and mobile touch. The title screen, sanctuary upgrades,
 settings, pause menu and expedition results now share a consistent visual design.
 Sword attacks follow the cursor automatically. WASD or arrows move the character;
 Escape pauses, and 1/2/3 selects a level-up blessing. Settings include audio volume,
 mute, reduced effects and fullscreen. Progress is stored locally in this browser,
-not in a cloud account. Narrow-screen layouts are supported, but touch movement is
-not implemented.
+not in a cloud account. Touch devices show a left movement joystick and a right aiming
+joystick. Attacks stay automatic; movement also sets the initial facing until the
+aiming stick is used. Multi-touch, release/cancel, pause and orientation resets are
+handled independently. Run `node work/touch-browser-check.cjs` for mobile checks.
 
 RC1 fixes corrupted save loading, repeated start/reward handling, queued level-ups,
 maxed-build choices and final-boss victory detection. It adds a boss health meter,
