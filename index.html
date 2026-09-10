@@ -87,7 +87,7 @@
   <script>
     // Share the fixed camera projection with input and canvas overlays.
     window.AstraSword = {
-      reach:46.2, duration:.44, windup:.12, strikeEnd:.26, halfArc:.52,
+      reach:65, duration:.44, windup:.12, strikeEnd:.26, halfArc:.7,
       strike(age) { return Math.max(0,Math.min(1,(age-this.windup)/(this.strikeEnd-this.windup))); }
     };
     window.AstraView = {
