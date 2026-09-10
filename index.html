@@ -48,6 +48,9 @@
     .hidden { display: none !important; }
     #pause { z-index: 4; pointer-events: auto; position: fixed; right: 18px; bottom: 16px; padding: 8px 11px; background: rgba(12,20,39,.8); }
     .result { text-align: center; }
+    .audio-controls { position: fixed; z-index: 5; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 12px; padding: 8px 10px; background: rgba(8,12,20,.85); font-size: 12px; }
+    .audio-controls label { display: flex; align-items: center; gap: 5px; }
+    .audio-controls input[type=range] { width: 80px; accent-color: #6dceff; }
     .result .shards { color: #ffdd85; font-size: 25px; font-weight: 700; }
     @media (max-width: 600px) { .hud { padding: 12px; } .timer { font-size: 22px; } .right-hud { width: 46vw; } .panel { padding: 22px; } .shop, .choice-grid { grid-template-columns: 1fr; } .choice { min-height: 104px; } .choice b { font-size: 16px; } }
   </style>
@@ -65,6 +68,10 @@
     </div>
   </div>
   <button id="pause" class="hidden" aria-label="일시정지">II</button>
+  <div class="audio-controls" aria-label="사운드 설정">
+    <label><input id="audio-mute" type="checkbox">음소거</label>
+    <label>음량 <input id="audio-volume" type="range" min="0" max="100" value="45" aria-label="전체 음량"></label>
+  </div>
   <main class="screen" id="menu">
     <section class="panel">
       <div class="brand">THE LAST STARBEARER</div><h1>아스트라<br>폐허의 별</h1>
@@ -95,6 +102,12 @@
       unproject(x, y) {
         return { x: (x / this.horizontal + y / this.vertical) / 2,
           y: (y / this.vertical - x / this.horizontal) / 2 };
+      },
+      aim(player, pointer, width, height) {
+        if(!pointer.active)return player.aimAngle??Math.PI/4;
+        const origin=this.project(player.x,player.y,width,height);
+        const direction=this.unproject(pointer.x-origin.x,pointer.y-origin.y);
+        return Math.hypot(direction.x,direction.y)<1?player.aimAngle??Math.PI/4:Math.atan2(direction.y,direction.x);
       },
       constrain(player, width, height) {
         const span = this.span(width);
@@ -366,6 +379,90 @@ window.createMonsterFactory = function(THREE) {
 };
 
 </script>
+  <script>
+(() => {
+  let context, master, music, effects, noise, nextBeat=0, beat=0;
+  const recent={};
+  const mute=document.getElementById('audio-mute'), volume=document.getElementById('audio-volume');
+  let settings={muted:false,volume:45};
+  try {
+    const saved=JSON.parse(localStorage.getItem('astra-audio')||'null');
+    if(saved)settings={muted:!!saved.muted,volume:Number.isFinite(saved.volume)?Math.max(0,Math.min(100,saved.volume)):45};
+  } catch {}
+  mute.checked=settings.muted;volume.value=settings.volume;
+  function apply(){
+    if(master)master.gain.setTargetAtTime(settings.muted?0:settings.volume/100,context.currentTime,.03);
+    try{localStorage.setItem('astra-audio',JSON.stringify(settings));}catch{}
+  }
+  function unlock(){
+    try {
+      if(!context){
+        const Audio=window.AudioContext||window.webkitAudioContext;
+        if(!Audio)return;
+        context=new Audio();master=context.createGain();music=context.createGain();effects=context.createGain();
+        const limiter=context.createDynamicsCompressor();
+        master.connect(limiter);limiter.connect(context.destination);music.connect(master);effects.connect(master);
+        music.gain.value=0;effects.gain.value=.65;
+        noise=context.createBuffer(1,Math.ceil(context.sampleRate*.3),context.sampleRate);
+        const samples=noise.getChannelData(0);
+        for(let i=0;i<samples.length;i++)samples[i]=Math.random()*2-1;
+        apply();
+      }
+      if(context.state==='suspended')context.resume().catch(()=>{});
+    }catch{}
+  }
+  mute.onchange=()=>{settings.muted=mute.checked;unlock();apply();};
+  volume.oninput=()=>{settings.volume=Number(volume.value);unlock();apply();};
+  // Short envelopes and a master compressor keep overlapping combat sounds bounded.
+  function tone(freq,end,length,level,type,bus,when=context.currentTime){
+    const oscillator=context.createOscillator(), gain=context.createGain();
+    oscillator.type=type;oscillator.frequency.setValueAtTime(freq,when);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(20,end),when+length);
+    gain.gain.setValueAtTime(.0001,when);gain.gain.exponentialRampToValueAtTime(level,when+.012);
+    gain.gain.exponentialRampToValueAtTime(.0001,when+length);
+    oscillator.connect(gain);gain.connect(bus);oscillator.start(when);oscillator.stop(when+length+.02);
+    oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+  }
+  function swish(){
+    const source=context.createBufferSource(), filter=context.createBiquadFilter(), gain=context.createGain(), t=context.currentTime;
+    source.buffer=noise;filter.type='bandpass';filter.Q.value=.7;
+    filter.frequency.setValueAtTime(3000,t);filter.frequency.exponentialRampToValueAtTime(400,t+.16);
+    gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(.24,t+.025);gain.gain.exponentialRampToValueAtTime(.0001,t+.18);
+    source.connect(filter);filter.connect(gain);gain.connect(effects);source.start();source.stop(t+.2);
+    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+  }
+  function play(name){
+    if(!context||context.state!=='running'||settings.muted||settings.volume===0||document.hidden)return;
+    const t=context.currentTime;
+    if(t-(recent[name]??-10)<(name==='gem'?.09:.065))return;
+    recent[name]=t;
+    if(name==='swing')swish();
+    else if(name==='hit'){tone(170,45,.13,.3,'triangle',effects);tone(1800,340,.065,.065,'square',effects);}
+    else if(name==='hurt')tone(120,35,.28,.3,'sawtooth',effects);
+    else if(name==='gem')tone(880,1400,.12,.09,'sine',effects);
+    else if(name==='level')for(const [i,n] of [440,554.37,659.25,880].entries())tone(n,n,.45,.13,'sine',effects,t+i*.09);
+    else if(name==='end')for(const [i,n] of [220,174.61,130.81].entries())tone(n,n,.55,.16,'triangle',effects,t+i*.16);
+  }
+  function tick(playing){
+    if(!context)return;
+    music.gain.setTargetAtTime(playing&&!document.hidden?.22:0,context.currentTime,.1);
+    if(!playing||document.hidden||context.state!=='running'||settings.muted){nextBeat=context.currentTime;return;}
+    const t=context.currentTime;
+    if(nextBeat<t-.2)nextBeat=t;
+    // Original minor-key ostinato with a slow bass progression.
+    if(nextBeat<=t+.08){
+      const root=[110,87.31,98,82.41][Math.floor(beat/16)%4];
+      const ratio=[1,1.5,2,1.1892,1.5,2.3784,2,1.5][beat%8];
+      tone(root*ratio*2,root*ratio*2,.55,.12,'sine',music,nextBeat);
+      if(beat%4===0){tone(root,root,1.25,.22,'triangle',music,nextBeat);tone(65,30,.17,.22,'sine',music,nextBeat);}
+      beat++;nextBeat+=.3;
+    }
+  }
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)tick(false);});
+  window.AstraAudio={unlock,play,tick};
+})();
+
+</script>
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
 
@@ -445,7 +542,7 @@ window.createMonsterFactory = function(THREE) {
     ui.bossAlert = ui['boss-alert'];
     ui.shardCount = ui['shard-count'];
     let w = 0, h = 0, dpr = 1, running = false, paused = false, last = 0, spawnClock = 0, elapsed = 0, choiceOpen = false, nextBoss = 300;
-    const keys = new Set(), pointer = { x: 0, y: 0 }, enemies = [], gems = [], projectiles = [], zones = [], particles = [], texts = [], slashes = [];
+    const keys = new Set(), pointer = { x: 0, y: 0, active:false }, enemies = [], gems = [], projectiles = [], zones = [], particles = [], texts = [], slashes = [];
     const baseMeta = { vitality: ['성운의 심장', '최대 생명력 +12', 15], might: ['빛의 결정', '공격력 +8%', 18], swiftness: ['혜성의 보폭', '이동 속도 +5%', 18], wisdom: ['기억의 성운', '경험치 획득 +8%', 20], recovery: ['되살아난 별', '초당 회복 +0.25', 25], fortune: ['파편 공명', '획득 조각 +10%', 22] };
     const meta = JSON.parse(localStorage.getItem('astra-meta') || '{"shards":0,"vitality":0,"might":0,"swiftness":0,"wisdom":0,"recovery":0,"fortune":0}');
     let player;
@@ -473,6 +570,7 @@ window.createMonsterFactory = function(THREE) {
     addEventListener('resize', resize); resize();
     const movementCodes = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
     addEventListener('keydown', e => {
+      if(e.target?.tagName==='INPUT')return;
       if (movementCodes.has(e.code)) { keys.add(e.code); if(running) e.preventDefault(); }
       if (choiceOpen && /^Digit[123]$/.test(e.code)) choose(Number(e.code.slice(-1)) - 1);
       if (e.code === 'Escape' && !e.repeat && running && !choiceOpen) togglePause();
@@ -481,18 +579,19 @@ window.createMonsterFactory = function(THREE) {
     addEventListener('blur', () => keys.clear());
     document.addEventListener('visibilitychange', () => { if(document.hidden) keys.clear(); });
     canvas.addEventListener('pointerdown', () => canvas.focus({preventScroll:true}));
-    canvas.addEventListener('pointermove', e => { pointer.x=e.clientX; pointer.y=e.clientY; });
+    addEventListener('pointermove', e => { pointer.x=e.clientX; pointer.y=e.clientY; pointer.active=true; });
     ui.pause.onclick = togglePause; document.querySelector('#start').onclick = startRun; document.querySelector('#return').onclick = () => { ui.result.classList.add('hidden'); ui.menu.classList.remove('hidden'); renderShop(); };
     function saveMeta() { localStorage.setItem('astra-meta', JSON.stringify(meta)); }
     function renderShop() { ui.shardCount.textContent = meta.shards; ui.shop.innerHTML = ''; Object.entries(baseMeta).forEach(([id,[name,desc,cost]]) => { const level=meta[id]; const button=document.createElement('button'); button.className='upgrade'; button.innerHTML=`<b>${name} <span>Lv.${level}</span></b><small>${desc}</small><span>${cost + level * 10} 조각</span>`; button.onclick=()=>buy(id); ui.shop.append(button); }); }
     function buy(id) { const cost=baseMeta[id][2]+meta[id]*10; if (meta.shards < cost) return; meta.shards-=cost; meta[id]++; saveMeta(); renderShop(); }
     function startRun() {
+      window.AstraAudio?.unlock();
       enemies.length=gems.length=projectiles.length=zones.length=particles.length=texts.length=slashes.length=0; elapsed=spawnClock=0; nextBoss=300; paused=false; choiceOpen=false;
       player={x:0,y:0,r:15,hp:120+meta.vitality*12,maxHp:120+meta.vitality*12,speed:210*(1+meta.swiftness*.05),damage:18*(1+meta.might*.08),xp:0,nextXp:20,level:1,invuln:0,regen:meta.recovery*.25,magnet:120, weapons:{sword:1}, passive:{}, evolved:{}, cooldowns:{sword:0,bolt:1,meteor:2,lightning:3,blackhole:4,nebula:0}, kills:0};
       ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); ui.pause.classList.remove('hidden'); running=true; keys.clear(); canvas.focus({preventScroll:true}); last=performance.now(); requestAnimationFrame(loop);
     }
     function togglePause() { paused=!paused; ui.pause.textContent=paused?'▶':'II'; }
-    function loop(now) { if (!running) return; const dt=Math.min(.05,(now-last)/1000); last=now; if(!paused && !choiceOpen) update(dt); draw(); requestAnimationFrame(loop); }
+    function loop(now) { if (!running) return; const dt=Math.min(.05,(now-last)/1000); last=now; window.AstraAudio?.tick(!paused&&!choiceOpen&&!document.hidden); if(!paused && !choiceOpen) update(dt); draw(); requestAnimationFrame(loop); }
     function update(dt) { elapsed+=dt; player.invuln=Math.max(0,player.invuln-dt); updatePlayer(dt); spawnClock-=dt; const rate=Math.max(.09, .82-elapsed*.00072); if(spawnClock<=0) { spawnClock=rate; const count=1+Math.floor(elapsed/75); for(let i=0;i<count;i++) spawnEnemy(); } if(elapsed>=nextBoss) { spawnBoss(nextBoss); nextBoss+=300; } updateWeapons(dt); updateEnemies(dt); updateProjectiles(dt); updateZones(dt); updateGems(dt); updateParticles(dt); updateHud(); if(player.hp<=0) finish(false); }
     function updatePlayer(dt) {
       const dx=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0);
@@ -503,14 +602,15 @@ window.createMonsterFactory = function(THREE) {
       player.x+=movement.x; player.y+=movement.y;
       window.AstraView.constrain(player,w,h);
       player.moving=Math.hypot(player.x-oldX,player.y-oldY)>.001;
-      if(player.moving) player.facingAngle=Math.atan2(player.y-oldY,player.x-oldX);
+      player.aimAngle=window.AstraView.aim(player,pointer,w,h);
+      player.facingAngle=player.actionAngle=player.aimAngle;
       player.hp=Math.min(player.maxHp, player.hp+player.regen*dt);
     }
     function spawnEnemy(kind) { const options=elapsed<100?['zombie','worm']:elapsed<250?['zombie','worm','beast','mage']:elapsed<500?['zombie','worm','beast','mage','bomber','shield']:['zombie','worm','beast','mage','bomber','shield','assassin']; kind ||= options[Math.floor(Math.random()*options.length)]; const data=enemyTypes[kind]; const a=Math.random()*Math.PI*2, dist=Math.max(w,h)*.62+Math.random()*180, scale=1+elapsed/550; enemies.push({kind,...data,x:player.x+Math.cos(a)*dist,y:player.y+Math.sin(a)*dist,hp:data.hp*scale,maxHp:data.hp*scale,speed:data.speed*(1+elapsed/1000),hit:0,attack:0,shoot:1.5+Math.random(),blink:2+Math.random()*3,elite:Math.random()<Math.min(.12,elapsed/2500),boss:false}); }
     function spawnBoss(mark) { const names={300:'폐허의 집행자',600:'성운 포식자',900:'종말의 성체'}; const final=mark>=900, hp=(final?3300:mark===600?1800:800)*(1+elapsed/800); const a=Math.random()*6.28, dist=Math.max(w,h)*.55; enemies.push({kind:'boss',name:names[mark],x:player.x+Math.cos(a)*dist,y:player.y+Math.sin(a)*dist,r:final?44:34,hp,maxHp:hp,speed:final?62:48,damage:final?32:24,xp:100,color:final?'#e46c7c':'#d49b5c',hit:0,attack:0,shoot:1.2,blink:3,elite:true,boss:true,phase:0}); ui.bossAlert.textContent=`경고: ${names[mark]} 접근 중`; setTimeout(()=>{ if(running) ui.bossAlert.textContent=''; },4000); }
     function updateWeapons(dt) { const haste=1-(player.passive.haste||0)*.08, area=1+(player.passive.area||0)*.1, duration=1+(player.passive.duration||0)*.15;
       Object.keys(player.cooldowns).forEach(k=>player.cooldowns[k]-=dt);
-      if(player.weapons.sword && player.cooldowns.sword<=0){ const cycle=Math.max(.12,.72*haste); player.cooldowns.sword+=cycle; slash(player.facingAngle??Math.PI/4, window.AstraSword.reach*area, player.damage*(1+.22*player.weapons.sword),cycle); }
+      if(player.weapons.sword && player.cooldowns.sword<=0){ const cycle=Math.max(.12,.72*haste); player.cooldowns.sword+=cycle; slash(player.aimAngle??Math.PI/4, window.AstraSword.reach*area, player.damage*(1+.22*player.weapons.sword),cycle); }
       if(player.weapons.bolt && player.cooldowns.bolt<=0){ player.cooldowns.bolt=.7*haste; const count=1+(player.weapons.bolt>=3?1:0)+(player.evolved.plasma?2:0); for(let i=0;i<count;i++) fireBolt(nearestEnemy(), player.damage*(.7+.2*player.weapons.bolt)*(player.evolved.plasma?1.45:1), (player.passive.pierce||0)+(player.evolved.plasma?2:0)); }
       if(player.weapons.meteor && player.cooldowns.meteor<=0){ player.cooldowns.meteor=2.5*haste*(player.evolved.comet?.7:1); const t=denseEnemy(); if(t) zones.push({type:'meteor',x:t.x,y:t.y,r:(62+player.weapons.meteor*7)*area*(player.evolved.comet?1.45:1),life:.8,max:.8,damage:player.damage*(1.6+.35*player.weapons.meteor)*(1+(player.passive.fire||0)*.15)*(player.evolved.comet?2:1),done:false}); }
       if(player.weapons.lightning && player.cooldowns.lightning<=0){ player.cooldowns.lightning=1.8*haste; chainLightning(player.weapons.lightning+1, player.damage*(.9+.28*player.weapons.lightning)); }
@@ -518,8 +618,6 @@ window.createMonsterFactory = function(THREE) {
       if(player.weapons.nebula) { const r=(75+player.weapons.nebula*9)*area; zones.push({type:'nebula',x:player.x,y:player.y,r,life:dt,max:dt,damage:player.damage*(.18+.05*player.weapons.nebula),done:false}); }
     }
     function slash(angle, reach, damage, duration=window.AstraSword.duration) {
-      const target=nearestEnemy();
-      if(target&&dist(target,player)<=reach+target.r+8)angle=Math.atan2(target.y-player.y,target.x-player.x);
       player.actionAngle=angle; player.actionDuration=duration; player.actionUntil=elapsed+duration;
       const hit=new Set();
       slashes.push({x:player.x,y:player.y,a:angle,reach,life:duration,duration,damage,hit});
@@ -540,8 +638,9 @@ window.createMonsterFactory = function(THREE) {
       for(const s of slashes){
         const previousAge=(s.duration-s.life)*window.AstraSword.duration/s.duration;
         s.life-=dt;
-        s.x=player.x;s.y=player.y;
+        s.x=player.x;s.y=player.y;s.a=player.aimAngle??s.a;
         const timing=window.AstraSword, age=(s.duration-s.life)*timing.duration/s.duration;
+        if(previousAge<=timing.windup&&age>timing.windup)window.AstraAudio?.play('swing');
         if(age<=timing.windup||previousAge>=timing.strikeEnd)continue;
         if(timing.strike(previousAge)>=.6||timing.strike(age)<.6)continue;
         const from=-timing.halfArc,to=timing.halfArc;
@@ -551,14 +650,14 @@ window.createMonsterFactory = function(THREE) {
           const relative=Math.atan2(Math.sin(angle),Math.cos(angle));
           const tolerance=Math.asin(Math.min(1,e.r/Math.max(1,distance)));
           if(distance<s.reach+e.r&&relative+tolerance>=from&&relative-tolerance<=to){
-            s.hit.add(e);damageEnemy(e,s.damage,'#bceeff');burst(e.x,e.y,'#bceeff',8);
+            s.hit.add(e);damageEnemy(e,s.damage,'#bceeff');burst(e.x,e.y,'#bceeff',8);window.AstraAudio?.play('hit');
           }
         }
       }
       slashes.splice(0,slashes.length,...slashes.filter(s=>s.life>0)); }
     function damageEnemy(e,amount,color,critical=true){ if(e.dead)return; const crit=critical&&Math.random()<(player.passive.crit||0)*.05; const damage=amount*(crit?1.8:1); e.hp-=damage;e.hit=.11;texts.push({x:e.x,y:e.y-14,text:`${Math.round(damage)}${crit?'!':''}`,color,life:.45}); if(e.hp<=0){e.dead=true;player.kills++;gems.push({x:e.x,y:e.y,xp:Math.round(e.xp*(1+meta.wisdom*.08)),get:false});burst(e.x,e.y,e.color,e.boss?36:10);if(e.boss){ui.bossAlert.textContent=`${e.name} 격파`;setTimeout(()=>ui.bossAlert.textContent='',3000);if(elapsed>=890)finish(true);}} }
-    function hurt(damage){if(player.invuln>0)return;player.invuln=.35;player.hp-=damage;burst(player.x,player.y,'#ff7c76',12);}
-    function gainXp(amount){player.xp+=amount;while(player.xp>=player.nextXp){player.xp-=player.nextXp;player.level++;player.nextXp=Math.floor(player.nextXp*1.22+8);openChoices();}}
+    function hurt(damage){if(player.invuln>0)return;window.AstraAudio?.play('hurt');player.invuln=.35;player.hp-=damage;burst(player.x,player.y,'#ff7c76',12);}
+    function gainXp(amount){window.AstraAudio?.play('gem');player.xp+=amount;while(player.xp>=player.nextXp){player.xp-=player.nextXp;player.level++;player.nextXp=Math.floor(player.nextXp*1.22+8);window.AstraAudio?.play('level');openChoices();}}
     function openChoices(){choiceOpen=true; const picks=[]; const available=[]; Object.keys(weapons).forEach(id=>{if((player.weapons[id]||0)<weapons[id].max)available.push({type:'weapon',id});});Object.keys(passives).forEach(id=>{if((player.passive[id]||0)<passives[id].max)available.push({type:'passive',id});}); while(picks.length<3&&available.length){const i=Math.floor(Math.random()*available.length);picks.push(available.splice(i,1)[0]);} ui.choices.innerHTML=''; picks.forEach((pick,i)=>{const data=pick.type==='weapon'?weapons[pick.id]:passives[pick.id],level=(pick.type==='weapon'?player.weapons:player.passive)[pick.id]||0;const b=document.createElement('button');b.className='choice';b.innerHTML=`<b>${data.name}</b><small>${data.desc}</small><small>Lv. ${level} → ${level+1}</small><span class="key">${i+1} 키로 선택</span>`;b.onclick=()=>choose(i);ui.choices.append(b);});ui.levelup.classList.remove('hidden');ui.levelup.dataset.picks=JSON.stringify(picks); }
     function choose(i){if(!choiceOpen)return;const picks=JSON.parse(ui.levelup.dataset.picks),pick=picks[i];if(!pick)return;const bucket=pick.type==='weapon'?player.weapons:player.passive;bucket[pick.id]=(bucket[pick.id]||0)+1;if(pick.id==='vitality'){player.maxHp+=20;player.hp+=20;}if(pick.id==='magnet')player.magnet+=30;checkEvolution();choiceOpen=false;ui.levelup.classList.add('hidden');}
     function checkEvolution(){const p=player.passive,w=player.weapons;if(w.meteor>=4&&p.fire>=2&&!player.evolved.comet){player.evolved.comet=true;ui.bossAlert.textContent='진화: 멸망의 혜성';}if(w.bolt>=4&&p.pierce>=2&&p.haste>=2&&!player.evolved.plasma){player.evolved.plasma=true;ui.bossAlert.textContent='진화: 플라즈마 폭풍';}if(w.blackhole>=4&&p.area>=2&&p.duration>=2&&!player.evolved.singularity){player.evolved.singularity=true;ui.bossAlert.textContent='진화: 초거대 특이점';}}
@@ -596,7 +695,7 @@ window.createMonsterFactory = function(THREE) {
     }
     function drawParticle(p){const s=worldToScreen(p.x,p.y);ctx.globalAlpha=Math.max(0,p.life/.8);ctx.fillStyle=p.color;ctx.fillRect(s.x-2,s.y-2,4,4);ctx.globalAlpha=1;}
     function drawText(t){const p=worldToScreen(t.x,t.y);ctx.globalAlpha=Math.max(0,t.life/.45);ctx.fillStyle=t.color;ctx.font='700 13px Segoe UI';ctx.textAlign='center';ctx.fillText(t.text,p.x,p.y-(1-t.life/.45)*20);ctx.globalAlpha=1;}
-    function finish(win){if(!running)return;running=false;ui.hud.classList.add('hidden');ui.pause.classList.add('hidden');const gain=Math.max(4,Math.floor(elapsed/42)+Math.floor(player.kills/30))*(1+meta.fortune*.1);meta.shards+=Math.floor(gain);saveMeta();ui.earned.textContent=Math.floor(gain);ui['result-label'].textContent=win?'RUIN PURIFIED':'RUN OVER';ui['result-title'].textContent=win?'폐허의 별이 다시 빛납니다':'별빛이 꺼졌습니다';ui['result-copy'].textContent=win?`${Math.floor(elapsed/60)}분 동안 ${player.kills}체를 쓰러뜨리고 최종보스를 격파했습니다.`:`${Math.floor(elapsed/60)}분 ${Math.floor(elapsed%60)}초, ${player.kills}체를 처치했습니다. 파편으로 다음 원정을 강하게 만드세요.`;ui.result.classList.remove('hidden');}
+    function finish(win){if(!running)return;running=false;window.AstraAudio?.tick(false);window.AstraAudio?.play(win?'level':'end');ui.hud.classList.add('hidden');ui.pause.classList.add('hidden');const gain=Math.max(4,Math.floor(elapsed/42)+Math.floor(player.kills/30))*(1+meta.fortune*.1);meta.shards+=Math.floor(gain);saveMeta();ui.earned.textContent=Math.floor(gain);ui['result-label'].textContent=win?'RUIN PURIFIED':'RUN OVER';ui['result-title'].textContent=win?'폐허의 별이 다시 빛납니다':'별빛이 꺼졌습니다';ui['result-copy'].textContent=win?`${Math.floor(elapsed/60)}분 동안 ${player.kills}체를 쓰러뜨리고 최종보스를 격파했습니다.`:`${Math.floor(elapsed/60)}분 ${Math.floor(elapsed%60)}초, ${player.kills}체를 처치했습니다. 파편으로 다음 원정을 강하게 만드세요.`;ui.result.classList.remove('hidden');}
     renderShop(); draw();
   })();
   </script>
