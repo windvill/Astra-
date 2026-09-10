@@ -55,6 +55,14 @@
     @media (max-width: 600px) { .hud { padding: 12px; } .timer { font-size: 22px; } .right-hud { width: 46vw; } .panel { padding: 22px; } .shop, .choice-grid { grid-template-columns: 1fr; } .choice { min-height: 104px; } .choice b { font-size: 16px; } }
   </style>
   <style>* { letter-spacing:0 !important; }
+#touch-controls[hidden] { display:none; }
+#touch-controls { position:fixed;inset:0;z-index:4;pointer-events:none; }
+.touch-stick { position:absolute;bottom:max(30px,env(safe-area-inset-bottom));width:120px;height:120px;border-radius:50%;border:2px solid #afcdb18c;background:#132623aa;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;display:grid;place-items:center; }
+.touch-stick[data-stick=move] { left:max(20px,env(safe-area-inset-left)); }.touch-stick[data-stick=aim] { right:max(20px,env(safe-area-inset-right));border-color:#d9cb9399; }
+.stick-knob { width:48px;height:48px;border-radius:50%;background:#bacfbac9;border:2px solid #e4efd4;position:absolute;pointer-events:none; }
+[data-stick=aim] .stick-knob { background:#e0ce9ac9;border-color:#f6e7ba; }.stick-symbol { font-size:80px;color:#d6e4ca66;pointer-events:none; }
+@media(any-pointer:coarse){#game{touch-action:none;}body:not(.title-screen)>.audio-controls{bottom:auto;top:100px;left:12px;}#pause{bottom:164px;right:20px;}#tutorial.tutorial-panel{bottom:178px;max-height:calc(100dvh - 320px);overflow:auto;}#tutorial .guide-flow .key-pad{display:none;}}
+@media(any-pointer:coarse) and (max-height:500px){.touch-stick{width:96px;height:96px;bottom:18px;}#pause{bottom:126px;}#tutorial.tutorial-panel{bottom:12px;width:calc(100% - 300px);max-height:calc(100dvh - 150px);padding:10px;}#tutorial #tutorial-diagram{display:none;}}
 button { transition:background .18s,border-color .18s,color .18s; }
 button:focus-visible,input:focus-visible { outline:2px solid #d8dbb8;outline-offset:4px; }
 button:disabled { cursor:default;opacity:.42; }
@@ -166,6 +174,8 @@ input { accent-color:#87bc9c; }
 }
 @media(max-height:580px) { .title-mark { margin-top:50px; }.title-mark h1 { font-size:62px; }.title-lore { display:none; }.title-korean { margin:6px 0;font-size:18px; }.title-actions { margin-bottom:66px; }.title-footer { bottom:12px;padding-top:10px; }.start-expedition { height:46px; }.title-links { margin-top:4px; } }
 @media(prefers-reduced-motion:reduce) { * { transition:none !important; } }
+@media(any-pointer:coarse){#tutorial.tutorial-panel{top:auto;bottom:178px;max-height:calc(100dvh - 320px);overflow:auto;}}
+@media(any-pointer:coarse) and (max-height:500px){#tutorial.tutorial-panel{bottom:12px;width:calc(100% - 300px);max-height:calc(100dvh - 150px);padding:10px;}}
 </style>
 </head>
 <body class="title-screen">
@@ -770,6 +780,37 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
 })();
 
 </script>
+  <script>
+(() => {
+  const layer=document.createElement('div');layer.id='touch-controls';layer.hidden=true;
+  layer.innerHTML='<div class="touch-stick" data-stick="move" role="group" aria-label="이동 조이스틱"><span class="stick-symbol">✥</span><span class="stick-knob"></span></div><div class="touch-stick" data-stick="aim" role="group" aria-label="공격 방향 조이스틱"><span class="stick-symbol">⌖</span><span class="stick-knob"></span></div>';
+  document.body.append(layer);
+  const state={x:0,y:0,aimX:0,aimY:0,aimed:false,enabled:false};
+  const sticks=[];
+  const coarse=matchMedia('(any-pointer: coarse)');
+  function reset(){state.x=state.y=0;for(const stick of sticks){if(stick.id!==null&&stick.el.hasPointerCapture(stick.id))stick.el.releasePointerCapture(stick.id);stick.id=null;stick.knob.style.transform='translate(0px,0px)';}}
+  for(const el of layer.children){
+    const stick={el,knob:el.querySelector('.stick-knob'),id:null};sticks.push(stick);
+    function move(e){
+      if(e.pointerId!==stick.id)return;
+      const r=el.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2;
+      const distance=Math.hypot(dx,dy),radius=r.width*.32,scale=Math.min(1,radius/(distance||1));
+      const x=distance<7?0:dx*scale/radius,y=distance<7?0:dy*scale/radius;
+      stick.knob.style.transform=`translate(${x*radius}px,${y*radius}px)`;
+      if(el.dataset.stick==='move'){state.x=x;state.y=y;}else if(x||y){state.aimX=x;state.aimY=y;state.aimed=true;}
+      e.preventDefault();
+    }
+    el.addEventListener('pointerdown',e=>{if(!state.enabled||stick.id!==null)return;stick.id=e.pointerId;el.setPointerCapture(e.pointerId);move(e);});
+    el.addEventListener('pointermove',move);
+    function end(e){if(e.pointerId!==stick.id)return;stick.id=null;stick.knob.style.transform='translate(0px,0px)';if(el.dataset.stick==='move')state.x=state.y=0;}
+    el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);el.addEventListener('lostpointercapture',end);
+  }
+  addEventListener('blur',reset);addEventListener('resize',reset);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)reset();});
+  window.AstraTouch={state,reset,enable(active){const enabled=!!active&&coarse.matches;if(enabled===state.enabled)return;state.enabled=enabled;layer.hidden=!enabled;if(!enabled)reset();},restart(){reset();state.aimed=false;}};
+})();
+
+</script>
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
 
@@ -896,7 +937,7 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
     addEventListener('blur', () => keys.clear());
     document.addEventListener('visibilitychange', () => { if(document.hidden){keys.clear();if(running&&!paused&&!choiceOpen)togglePause();} });
     canvas.addEventListener('pointerdown', () => canvas.focus({preventScroll:true}));
-    addEventListener('pointermove', e => { pointer.x=e.clientX; pointer.y=e.clientY; pointer.active=true; });
+    addEventListener('pointermove', e => { if(e.pointerType==='touch')return;pointer.x=e.clientX; pointer.y=e.clientY; pointer.active=true; });
     ui.pause.onclick=togglePause;document.querySelector('#resume').onclick=togglePause;
     document.querySelector('#retire').onclick=()=>tutorial?endTutorial(false):finish(false);
     document.querySelector('#tutorial-skip').onclick=()=>endTutorial(true);
@@ -917,6 +958,7 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
     function startRun(forceTutorial=false) {
       if(running)return;
       window.AstraShell?.close();document.body?.classList.remove('title-screen');
+      window.AstraTouch?.restart();
       ui.result.classList.add('hidden');ui.levelup.classList.add('hidden');document.getElementById('pause-menu').classList.add('hidden');
       pendingChoices=0;hudClock=0;
       window.AstraAudio?.unlock();
@@ -933,7 +975,7 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
       ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); ui.pause.classList.remove('hidden'); running=true; keys.clear(); canvas.focus({preventScroll:true});last=performance.now();updateHud();animationFrame=requestAnimationFrame(loop);
     }
     function togglePause(){if(!running||choiceOpen)return;paused=!paused;keys.clear();document.getElementById('pause-menu').classList[paused?'remove':'add']('hidden');window.AstraAudio?.tick(!paused);if(paused)document.getElementById('resume').focus();else canvas.focus({preventScroll:true});}
-    function loop(now){if(!running)return;const dt=Math.min(.05,(now-last)/1000);last=now;const active=!paused&&!choiceOpen&&!document.hidden&&!window.AstraShell?.isOpen();window.AstraAudio?.tick(active);if(active)update(dt);draw();if(running)animationFrame=requestAnimationFrame(loop);}
+    function loop(now){if(!running)return;const dt=Math.min(.05,(now-last)/1000);last=now;const active=!paused&&!choiceOpen&&!document.hidden&&!window.AstraShell?.isOpen();window.AstraTouch?.enable(active);window.AstraAudio?.tick(active);if(active)update(dt);draw();if(running)animationFrame=requestAnimationFrame(loop);else window.AstraTouch?.enable(false);}
     function update(dt){if(tutorial){updateTraining(dt);return;}elapsed+=dt;player.invuln=Math.max(0,player.invuln-dt);updatePlayer(dt);spawnClock-=dt;const rate=Math.max(.14,.72-elapsed*.0006);if(spawnClock<=0){spawnClock=rate;const count=1+Math.floor(elapsed/75);for(let i=0;i<count&&enemies.length<240;i++)spawnEnemy();}if(elapsed>=nextBoss&&nextBoss<=900){spawnBoss(nextBoss);nextBoss+=300;}updateWeapons(dt);updateEnemies(dt);updateProjectiles(dt);updateZones(dt);updateGems(dt);updateParticles(dt);hudClock-=dt;if(hudClock<=0){updateHud();hudClock=.1;}if(player.hp<=0)finish(false);}
     function updateTutorial(){
       const stages=[['첫 번째 별의 표식','빛나는 표식에 도달해 성소의 수련을 시작하세요.'],['사라지지 않은 그림자','표식 곁에 나타난 그림자를 쓰러뜨리세요.'],['돌아오는 별의 조각','그림자가 남긴 푸른 조각을 되찾으세요.'],['별의 첫 축복','깨어난 별이 건네는 축복을 하나 받아들이세요.'],['수련 완료','이제 폐허로 떠날 준비가 되었습니다.']];
@@ -966,19 +1008,22 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
     function endTutorial(continueRun){
       if(!tutorial)return;
       running=false;cancelAnimationFrame(animationFrame);tutorial=null;meta.tutorial=1;saveMeta();keys.clear();paused=false;choiceOpen=false;pendingChoices=0;
+      window.AstraTouch?.enable(false);
       document.getElementById('tutorial').classList.add('hidden');document.getElementById('pause-menu').classList.add('hidden');ui.levelup.classList.add('hidden');
       if(continueRun)startRun();else{window.AstraAudio?.tick(false);ui.hud.classList.add('hidden');ui.pause.classList.add('hidden');ui.menu.classList.remove('hidden');document.body?.classList.add('title-screen');renderShop();}
     }
     function updatePlayer(dt) {
-      const dx=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0);
-      const dy=(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0);
-      const len=Math.hypot(dx,dy)||1;
+      const touch=window.AstraTouch?.state;
+      const dx=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+(touch?.enabled?touch.x:0);
+      const dy=(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)+(touch?.enabled?touch.y:0);
+      const len=Math.max(1,Math.hypot(dx,dy));
       const movement=window.AstraView.unproject(dx/len*player.speed*dt,dy/len*player.speed*dt);
       const oldX=player.x, oldY=player.y;
       player.x+=movement.x; player.y+=movement.y;
       window.AstraView.constrain(player,w,h);
       player.moving=Math.hypot(player.x-oldX,player.y-oldY)>.001;
       player.aimAngle=window.AstraView.aim(player,pointer,w,h);
+      if(touch?.enabled&&(touch.aimed||dx||dy)){const a=window.AstraView.unproject(touch.aimed?touch.aimX:dx,touch.aimed?touch.aimY:dy);player.aimAngle=Math.atan2(a.y,a.x);}
       player.facingAngle=player.actionAngle=player.aimAngle;
       player.hp=Math.min(player.maxHp, player.hp+player.regen*dt);
     }
