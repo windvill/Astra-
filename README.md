@@ -4,7 +4,9 @@ A browser action-survival game with an isometric view, automatic combat, level-u
 
 ## Play
 
-Open `outputs/astra-ruined-star/index.html` in a desktop browser. An internet connection is needed to load the pinned Three.js module. No build step is required.
+The repository root `index.html` is the deployable game bundle. Import this repository into Vercel with the Other framework preset; `vercel.json` serves the root directory without a build step. An internet connection is needed to load the pinned Three.js module.
+
+For editable source, extract `astra-upload.zip` and open `outputs/astra-ruined-star/index.html` in a desktop browser. The archive includes source files, images and checks. The root bundle embeds local scripts and runtime images for portable hosting.
 
 - Move: WASD or arrow keys (works with Korean keyboard input).
 - Choose an upgrade: 1, 2, 3.
