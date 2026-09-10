@@ -58,9 +58,9 @@
 #touch-controls[hidden] { display:none; }
 #touch-controls { position:fixed;inset:0;z-index:4;pointer-events:none; }
 .touch-stick { position:absolute;bottom:max(30px,env(safe-area-inset-bottom));width:120px;height:120px;border-radius:50%;border:2px solid #afcdb18c;background:#132623aa;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;display:grid;place-items:center; }
-.touch-stick[data-stick=move] { left:max(20px,env(safe-area-inset-left)); }.touch-stick[data-stick=aim] { right:max(20px,env(safe-area-inset-right));border-color:#d9cb9399; }
+.touch-stick[data-stick=move] { left:max(20px,env(safe-area-inset-left)); }
 .stick-knob { width:48px;height:48px;border-radius:50%;background:#bacfbac9;border:2px solid #e4efd4;position:absolute;pointer-events:none; }
-[data-stick=aim] .stick-knob { background:#e0ce9ac9;border-color:#f6e7ba; }.stick-symbol { font-size:80px;color:#d6e4ca66;pointer-events:none; }
+.stick-symbol { font-size:80px;color:#d6e4ca66;pointer-events:none; }
 @media(any-pointer:coarse){#game{touch-action:none;}body:not(.title-screen)>.audio-controls{bottom:auto;top:100px;left:12px;}#pause{bottom:164px;right:20px;}#tutorial.tutorial-panel{bottom:178px;max-height:calc(100dvh - 320px);overflow:auto;}#tutorial .guide-flow .key-pad{display:none;}}
 @media(any-pointer:coarse) and (max-height:500px){.touch-stick{width:96px;height:96px;bottom:18px;}#pause{bottom:126px;}#tutorial.tutorial-panel{bottom:12px;width:calc(100% - 300px);max-height:calc(100dvh - 150px);padding:10px;}#tutorial #tutorial-diagram{display:none;}}
 button { transition:background .18s,border-color .18s,color .18s; }
@@ -785,9 +785,9 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
   <script>
 (() => {
   const layer=document.createElement('div');layer.id='touch-controls';layer.hidden=true;
-  layer.innerHTML='<div class="touch-stick" data-stick="move" role="group" aria-label="이동 조이스틱"><span class="stick-symbol">✥</span><span class="stick-knob"></span></div><div class="touch-stick" data-stick="aim" role="group" aria-label="공격 방향 조이스틱"><span class="stick-symbol">⌖</span><span class="stick-knob"></span></div>';
+  layer.innerHTML='<div class="touch-stick" data-stick="move" role="group" aria-label="이동 및 공격 방향 조이스틱"><span class="stick-symbol">✥</span><span class="stick-knob"></span></div>';
   document.body.append(layer);
-  const state={x:0,y:0,aimX:0,aimY:0,aimed:false,enabled:false};
+  const state={x:0,y:0,enabled:false};
   const sticks=[];
   const coarse=matchMedia('(any-pointer: coarse)');
   function reset(){state.x=state.y=0;for(const stick of sticks){if(stick.id!==null&&stick.el.hasPointerCapture(stick.id))stick.el.releasePointerCapture(stick.id);stick.id=null;stick.knob.style.transform='translate(0px,0px)';}}
@@ -799,7 +799,7 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
       const distance=Math.hypot(dx,dy),radius=r.width*.32,scale=Math.min(1,radius/(distance||1));
       const x=distance<7?0:dx*scale/radius,y=distance<7?0:dy*scale/radius;
       stick.knob.style.transform=`translate(${x*radius}px,${y*radius}px)`;
-      if(el.dataset.stick==='move'){state.x=x;state.y=y;}else if(x||y){state.aimX=x;state.aimY=y;state.aimed=true;}
+      state.x=x;state.y=y;
       e.preventDefault();
     }
     el.addEventListener('pointerdown',e=>{if(!state.enabled||stick.id!==null)return;stick.id=e.pointerId;el.setPointerCapture(e.pointerId);move(e);});
@@ -809,7 +809,7 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
   }
   addEventListener('blur',reset);addEventListener('resize',reset);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)reset();});
-  window.AstraTouch={state,reset,enable(active){const enabled=!!active&&coarse.matches;if(enabled===state.enabled)return;state.enabled=enabled;layer.hidden=!enabled;if(!enabled)reset();},restart(){reset();state.aimed=false;}};
+  window.AstraTouch={state,reset,enable(active){const enabled=!!active&&coarse.matches;if(enabled===state.enabled)return;state.enabled=enabled;layer.hidden=!enabled;if(!enabled)reset();},restart:reset};
 })();
 
 </script>
@@ -1024,8 +1024,9 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
       player.x+=movement.x; player.y+=movement.y;
       window.AstraView.constrain(player,w,h);
       player.moving=Math.hypot(player.x-oldX,player.y-oldY)>.001;
-      player.aimAngle=window.AstraView.aim(player,pointer,w,h);
-      if(touch?.enabled&&(touch.aimed||dx||dy)){const a=window.AstraView.unproject(touch.aimed?touch.aimX:dx,touch.aimed?touch.aimY:dy);player.aimAngle=Math.atan2(a.y,a.x);}
+      if(touch?.enabled){
+        if(dx||dy){const a=window.AstraView.unproject(dx,dy);player.aimAngle=Math.atan2(a.y,a.x);}
+      }else player.aimAngle=window.AstraView.aim(player,pointer,w,h);
       player.facingAngle=player.actionAngle=player.aimAngle;
       player.hp=Math.min(player.maxHp, player.hp+player.regen*dt);
     }
