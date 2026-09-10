@@ -91,11 +91,13 @@ button:disabled { cursor:default;opacity:.42; }
 .currency-line strong { color:#e7d397; }
 .upgrade { background:#1b292a;border-color:#3e524a;padding:16px;min-height:102px;gap:9px; }
 .upgrade:hover:not(:disabled) { background:#2b3b34;border-color:#c8c493; }
+.upgrade:disabled,.upgrade:disabled:hover { opacity:1;background:#182426;border-color:#354943;color:#adbbb1; }
 .upgrade small { color:#9caeaa;font-size:12px; }
 .upgrade span { font-size:11px;color:#d4c58f; }
 .menu-dialog { z-index:7; }
 #settings-audio .audio-controls { visibility:visible;position:static;background:none;display:flex;flex-direction:column;align-items:stretch;padding:0;font-size:14px;gap:20px; }
-#settings-audio label { justify-content:space-between;flex-direction:row-reverse; }
+#settings-audio label { justify-content:space-between; }
+#settings-audio label:first-child { flex-direction:row-reverse; }
 #settings-audio input[type=range] { width:180px; }
 .setting-row { display:flex;align-items:center;justify-content:space-between;font-size:14px;padding:10px 0 20px;color:#c7d1c8; }
 input { accent-color:#87bc9c; }
@@ -846,7 +848,7 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
       if(player.weapons.meteor && player.cooldowns.meteor<=0){ player.cooldowns.meteor=2.5*haste*(player.evolved.comet?.7:1); const t=denseEnemy(); if(t) zones.push({type:'meteor',x:t.x,y:t.y,r:(62+player.weapons.meteor*7)*area*(player.evolved.comet?1.45:1),life:.8,max:.8,damage:player.damage*(1.6+.35*player.weapons.meteor)*(1+(player.passive.fire||0)*.15)*(player.evolved.comet?2:1),done:false}); }
       if(player.weapons.lightning && player.cooldowns.lightning<=0){ player.cooldowns.lightning=1.8*haste; chainLightning(player.weapons.lightning+1, player.damage*(.9+.28*player.weapons.lightning)); }
       if(player.weapons.blackhole && player.cooldowns.blackhole<=0){ player.cooldowns.blackhole=5.5*haste*(player.evolved.singularity?.7:1); const t=denseEnemy(); if(t) zones.push({type:'blackhole',x:t.x,y:t.y,r:(72+player.weapons.blackhole*9)*area*(player.evolved.singularity?1.65:1),life:2.5*duration*(player.evolved.singularity?1.6:1),max:2.5*duration,damage:player.damage*(.22+.06*player.weapons.blackhole)*(player.evolved.singularity?2:1),done:false}); }
-      if(player.weapons.nebula){const r=(75+player.weapons.nebula*9)*area,aura=zones.find(z=>z.type==='nebula');if(aura){aura.life=.2;aura.r=r;}else zones.push({type:'nebula',x:player.x,y:player.y,r,life:.2,max:.2,damage:player.damage*(.18+.05*player.weapons.nebula),done:false});}
+      if(player.weapons.nebula){const r=(75+player.weapons.nebula*9)*area,damage=player.damage*(.18+.05*player.weapons.nebula),aura=zones.find(z=>z.type==='nebula');if(aura){aura.life=.2;aura.r=r;aura.damage=damage;}else zones.push({type:'nebula',x:player.x,y:player.y,r,life:.2,max:.2,damage,done:false});}
     }
     function slash(angle, reach, damage, duration=window.AstraSword.duration) {
       player.actionAngle=angle; player.actionDuration=duration; player.actionUntil=elapsed+duration;
