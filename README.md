@@ -2,6 +2,15 @@
 
 ## Release Candidate 1
 
+Character selection now includes Astra (balanced sword), Seir (fast sword/bolt caster)
+and Var (slow heavy sword guardian). Choice persists locally and changes the gameplay
+rig, starting weapons and stats. Their portraits are existing concept art; gameplay
+uses the sprite/3D rig representations. A first-run sanctuary tutorial covers reaching
+a marker, defeating a harmless target, collecting experience and choosing a blessing.
+It can be replayed or skipped, grants no permanent currency, and resets the expedition
+before normal play. The title menu also contains three story chapters and expanded
+credits.
+
 Desktop browser build for keyboard and mouse. The title screen, sanctuary upgrades,
 settings, pause menu and expedition results now share a consistent visual design.
 Sword attacks follow the cursor automatically. WASD or arrows move the character;
