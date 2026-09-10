@@ -188,7 +188,8 @@ window.createAstraRig = function (THREE) {
     torso.rotation.y=0;torso.rotation.x=0;
     if(attacking){
       const timing=window.AstraSword;
-      const age=timing.duration-(player.actionUntil-time);
+      const duration=player.actionDuration||timing.duration;
+      const age=(1-(player.actionUntil-time)/duration)*timing.duration;
       const smooth=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
       let raise,cut;
       if(age<timing.windup){
@@ -230,7 +231,8 @@ window.astraMotionFrame=function(player,time){
   const row=side?1:dy>=0?0:3;
   let column=0;
   if(attacking){
-    const age=window.AstraSword.duration-(player.actionUntil-time);
+    const duration=player.actionDuration||window.AstraSword.duration;
+    const age=(1-(player.actionUntil-time)/duration)*window.AstraSword.duration;
     column=age<window.AstraSword.windup?3:age<window.AstraSword.strikeEnd?4:5;
   }else if(player.moving){column=[1,0,2,0][Math.floor(time*10)%4];}
   return {row,column,flip:side&&dx<0};
@@ -448,7 +450,7 @@ window.createMonsterFactory = function(THREE) {
     const meta = JSON.parse(localStorage.getItem('astra-meta') || '{"shards":0,"vitality":0,"might":0,"swiftness":0,"wisdom":0,"recovery":0,"fortune":0}');
     let player;
     const weapons = {
-      sword: { name: '별빛검', desc: '주변을 회전 베기로 자동 공격', max: 8 },
+      sword: { name: '별빛검', desc: '공격속도에 맞춰 전방을 연속 내려베기', max: 8 },
       bolt: { name: '에너지탄', desc: '가장 가까운 적을 추적하는 광탄', max: 8 },
       meteor: { name: '유성', desc: '밀집한 적에게 유성 낙하', max: 8 },
       lightning: { name: '번개', desc: '적 사이를 뛰는 연쇄 번개', max: 8 },
@@ -508,20 +510,19 @@ window.createMonsterFactory = function(THREE) {
     function spawnBoss(mark) { const names={300:'폐허의 집행자',600:'성운 포식자',900:'종말의 성체'}; const final=mark>=900, hp=(final?3300:mark===600?1800:800)*(1+elapsed/800); const a=Math.random()*6.28, dist=Math.max(w,h)*.55; enemies.push({kind:'boss',name:names[mark],x:player.x+Math.cos(a)*dist,y:player.y+Math.sin(a)*dist,r:final?44:34,hp,maxHp:hp,speed:final?62:48,damage:final?32:24,xp:100,color:final?'#e46c7c':'#d49b5c',hit:0,attack:0,shoot:1.2,blink:3,elite:true,boss:true,phase:0}); ui.bossAlert.textContent=`경고: ${names[mark]} 접근 중`; setTimeout(()=>{ if(running) ui.bossAlert.textContent=''; },4000); }
     function updateWeapons(dt) { const haste=1-(player.passive.haste||0)*.08, area=1+(player.passive.area||0)*.1, duration=1+(player.passive.duration||0)*.15;
       Object.keys(player.cooldowns).forEach(k=>player.cooldowns[k]-=dt);
-      if(player.weapons.sword && player.cooldowns.sword<=0){ player.cooldowns.sword=Math.max(window.AstraSword.duration,.72*haste); slash(elapsed*3, window.AstraSword.reach*area, player.damage*(1+.22*player.weapons.sword)); }
+      if(player.weapons.sword && player.cooldowns.sword<=0){ const cycle=Math.max(.12,.72*haste); player.cooldowns.sword+=cycle; slash(player.facingAngle??Math.PI/4, window.AstraSword.reach*area, player.damage*(1+.22*player.weapons.sword),cycle); }
       if(player.weapons.bolt && player.cooldowns.bolt<=0){ player.cooldowns.bolt=.7*haste; const count=1+(player.weapons.bolt>=3?1:0)+(player.evolved.plasma?2:0); for(let i=0;i<count;i++) fireBolt(nearestEnemy(), player.damage*(.7+.2*player.weapons.bolt)*(player.evolved.plasma?1.45:1), (player.passive.pierce||0)+(player.evolved.plasma?2:0)); }
       if(player.weapons.meteor && player.cooldowns.meteor<=0){ player.cooldowns.meteor=2.5*haste*(player.evolved.comet?.7:1); const t=denseEnemy(); if(t) zones.push({type:'meteor',x:t.x,y:t.y,r:(62+player.weapons.meteor*7)*area*(player.evolved.comet?1.45:1),life:.8,max:.8,damage:player.damage*(1.6+.35*player.weapons.meteor)*(1+(player.passive.fire||0)*.15)*(player.evolved.comet?2:1),done:false}); }
       if(player.weapons.lightning && player.cooldowns.lightning<=0){ player.cooldowns.lightning=1.8*haste; chainLightning(player.weapons.lightning+1, player.damage*(.9+.28*player.weapons.lightning)); }
       if(player.weapons.blackhole && player.cooldowns.blackhole<=0){ player.cooldowns.blackhole=5.5*haste*(player.evolved.singularity?.7:1); const t=denseEnemy(); if(t) zones.push({type:'blackhole',x:t.x,y:t.y,r:(72+player.weapons.blackhole*9)*area*(player.evolved.singularity?1.65:1),life:2.5*duration*(player.evolved.singularity?1.6:1),max:2.5*duration,damage:player.damage*(.22+.06*player.weapons.blackhole)*(player.evolved.singularity?2:1),done:false}); }
       if(player.weapons.nebula) { const r=(75+player.weapons.nebula*9)*area; zones.push({type:'nebula',x:player.x,y:player.y,r,life:dt,max:dt,damage:player.damage*(.18+.05*player.weapons.nebula),done:false}); }
     }
-    function slash(angle, reach, damage) {
+    function slash(angle, reach, damage, duration=window.AstraSword.duration) {
       const target=nearestEnemy();
-      if(!target||dist(target,player)>reach+target.r+8)return;
-      angle=Math.atan2(target.y-player.y,target.x-player.x);
-      player.actionAngle=angle; player.actionUntil=elapsed+window.AstraSword.duration;
+      if(target&&dist(target,player)<=reach+target.r+8)angle=Math.atan2(target.y-player.y,target.x-player.x);
+      player.actionAngle=angle; player.actionDuration=duration; player.actionUntil=elapsed+duration;
       const hit=new Set();
-      slashes.push({x:player.x,y:player.y,a:angle,reach,life:window.AstraSword.duration,duration:window.AstraSword.duration,damage,hit});
+      slashes.push({x:player.x,y:player.y,a:angle,reach,life:duration,duration,damage,hit});
     }
     function fireBolt(target, damage, pierce) { if(!target) return; const a=Math.atan2(target.y-player.y,target.x-player.x); projectiles.push({x:player.x,y:player.y,vx:Math.cos(a)*420,vy:Math.sin(a)*420,r:5,life:1.45,damage,pierce,hit:new Set(),color:'#79d5ff'}); }
     function chainLightning(count, damage) { let target=nearestEnemy(), origin={x:player.x,y:player.y}; for(let i=0;target&&i<count;i++){ damageEnemy(target,damage,'#d8ecff'); projectiles.push({beam:true,x:origin.x,y:origin.y,tx:target.x,ty:target.y,life:.13,color:'#b7ddff'}); origin=target; target=enemies.filter(e=>!e.dead&&e!==origin&&dist(e,origin)<150).sort((a,b)=>dist(a,origin)-dist(b,origin))[0]; } }
@@ -537,9 +538,10 @@ window.createMonsterFactory = function(THREE) {
     function updateGems(dt){ for(const g of gems){const d=dist(g,player);if(d<player.magnet){const dx=player.x-g.x,dy=player.y-g.y;g.x+=dx/d*Math.min(500,1000/d)*dt;g.y+=dy/d*Math.min(500,1000/d)*dt;}if(d<player.r+10){gainXp(g.xp);g.get=true;}} gems.splice(0,gems.length,...gems.filter(g=>!g.get)); }
     function updateParticles(dt){ for(const p of particles){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;} particles.splice(0,particles.length,...particles.filter(p=>p.life>0)); for(const t of texts)t.life-=dt; texts.splice(0,texts.length,...texts.filter(t=>t.life>0));
       for(const s of slashes){
-        const previousAge=s.duration-s.life;
+        const previousAge=(s.duration-s.life)*window.AstraSword.duration/s.duration;
         s.life-=dt;
-        const age=s.duration-s.life, timing=window.AstraSword;
+        s.x=player.x;s.y=player.y;
+        const timing=window.AstraSword, age=(s.duration-s.life)*timing.duration/s.duration;
         if(age<=timing.windup||previousAge>=timing.strikeEnd)continue;
         if(timing.strike(previousAge)>=.6||timing.strike(age)<.6)continue;
         const from=-timing.halfArc,to=timing.halfArc;
@@ -572,7 +574,7 @@ window.createMonsterFactory = function(THREE) {
     function drawProjectile(p){if(p.beam){ctx.strokeStyle=p.color;ctx.lineWidth=3;ctx.shadowBlur=12;ctx.shadowColor=p.color;const a=worldToScreen(p.x,p.y),b=worldToScreen(p.tx,p.ty);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();return;}const s=worldToScreen(p.x,p.y);ctx.fillStyle=p.color;ctx.shadowBlur=12;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(s.x,s.y,p.r,0,6.28);ctx.fill();ctx.shadowBlur=0;}
     function drawZone(z){const p=worldToScreen(z.x,z.y);ctx.save();if(z.type==='meteor'){ctx.strokeStyle='#ff9a66';ctx.fillStyle='rgba(255,106,69,.12)';ctx.setLineDash([4,5]);ctx.lineWidth=2;}else if(z.type==='blackhole'){ctx.fillStyle='rgba(107,66,190,.20)';ctx.strokeStyle='#bc9cff';ctx.lineWidth=2;}else if(z.type==='danger'){ctx.fillStyle='rgba(255,76,72,.18)';ctx.strokeStyle='#ff958a';ctx.lineWidth=2;}else{ctx.fillStyle='rgba(107,167,255,.08)';ctx.strokeStyle='rgba(139,204,255,.38)';ctx.lineWidth=1;}ctx.beginPath();ctx.arc(p.x,p.y,z.r,0,6.28);ctx.fill();ctx.stroke();ctx.restore();}
     function drawSlash(s){
-      const age=s.duration-s.life,timing=window.AstraSword;
+      const timing=window.AstraSword,age=(s.duration-s.life)*timing.duration/s.duration;
       if(age<timing.windup||age>timing.strikeEnd)return;
       const progress=timing.strike(age);
       const pixelScale=h/(2*window.AstraView.span(w));
