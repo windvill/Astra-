@@ -1025,7 +1025,8 @@ window.AstraFloorImage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOYAAATmCA
       window.AstraView.constrain(player,w,h);
       player.moving=Math.hypot(player.x-oldX,player.y-oldY)>.001;
       if(touch?.enabled){
-        if(dx||dy){const a=window.AstraView.unproject(dx,dy);player.aimAngle=Math.atan2(a.y,a.x);}
+        const target=nearestEnemy();
+        if(target)player.aimAngle=Math.atan2(target.y-player.y,target.x-player.x);
       }else player.aimAngle=window.AstraView.aim(player,pointer,w,h);
       player.facingAngle=player.actionAngle=player.aimAngle;
       player.hp=Math.min(player.maxHp, player.hp+player.regen*dt);
