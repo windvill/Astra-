@@ -1,5 +1,23 @@
 # Astra: Ruined Star
 
+## Release Candidate 1
+
+Desktop browser build for keyboard and mouse. The title screen, sanctuary upgrades,
+settings, pause menu and expedition results now share a consistent visual design.
+Sword attacks follow the cursor automatically. WASD or arrows move the character;
+Escape pauses, and 1/2/3 selects a level-up blessing. Settings include audio volume,
+mute, reduced effects and fullscreen. Progress is stored locally in this browser,
+not in a cloud account. Narrow-screen layouts are supported, but touch movement is
+not implemented.
+
+RC1 fixes corrupted save loading, repeated start/reward handling, queued level-ups,
+maxed-build choices and final-boss victory detection. It adds a boss health meter,
+kill count, best survival record, retry and retreat flows, faster opening encounters,
+and bounded enemy/effect counts. Generated art and procedural rigs remain prototype
+assets; this is a playable release candidate, not a claim of commercial-release QA.
+
+Run `node work/release-check.cjs` for lifecycle and combat checks.
+
 A browser action-survival game with an isometric view, automatic combat, level-up choices and persistent upgrades.
 
 ## Play
